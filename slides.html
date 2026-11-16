@@ -1,0 +1,386 @@
+<div id="gfd-deck">
+<style>
+#gfd-deck{max-width:960px;margin:0 auto;color:var(--foreground);}
+#gfd-deck .deck-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;}
+#gfd-deck .pageno{color:var(--muted-foreground);font-size:12px;}
+#gfd-deck .stage{min-height:380px;}
+#gfd-deck .slide{display:none;}
+#gfd-deck .slide.active{display:block;animation:gfdFade .22s ease;}
+@keyframes gfdFade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+#gfd-deck .slide h2{margin:0 0 4px 0;}
+#gfd-deck .lead{margin:0 0 10px 0;}
+#gfd-deck .sub{color:var(--muted-foreground);margin:0 0 12px 0;}
+#gfd-deck .deck-foot{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;}
+#gfd-deck .dots{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
+#gfd-deck .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--border);background:transparent;padding:0;}
+#gfd-deck .dot.on{background:var(--primary);border-color:var(--primary);}
+#gfd-deck .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:12px 0;}
+#gfd-deck .fnode{border:1px solid var(--border);border-radius:10px;padding:8px 12px;background:var(--muted);color:var(--muted-foreground);animation:gfdPulse 3s infinite;animation-delay:var(--d,0s);}
+#gfd-deck .farrow{color:var(--muted-foreground);}
+@keyframes gfdPulse{0%,72%,100%{background:var(--muted);color:var(--muted-foreground);border-color:var(--border)}82%,92%{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}}
+#gfd-deck .layer{display:flex;gap:12px;align-items:flex-start;margin:10px 0;}
+#gfd-deck .lnum{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--secondary);color:var(--secondary-foreground);display:flex;align-items:center;justify-content:center;font-size:12px;}
+#gfd-deck .krow{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0;}
+#gfd-deck .cell{width:44px;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--muted);color:var(--muted-foreground);font-size:12px;padding:0;}
+#gfd-deck .cell.kf{border-color:var(--purple);color:var(--purple);}
+#gfd-deck .cell.hit-bad{background:var(--destructive);border-color:var(--destructive);color:var(--background);}
+#gfd-deck .cell.hit-good{background:var(--green);border-color:var(--green);color:var(--background);}
+#gfd-deck details{margin:6px 0;border-bottom:1px solid var(--border);padding-bottom:6px;}
+#gfd-deck summary{font-weight:500;}
+#gfd-deck details p{margin:6px 0 0 0;color:var(--muted-foreground);}
+#gfd-deck ul{margin:6px 0;padding-left:18px;}
+#gfd-deck li{margin:4px 0;}
+#gfd-deck .gcard{margin:10px 0;}
+#gfd-deck .cols{display:flex;gap:20px;flex-wrap:wrap;}
+#gfd-deck .cols>div{flex:1;min-width:260px;}
+#gfd-deck .quote{font-size:15px;line-height:1.7;margin:0 0 10px 0;}
+#gfd-deck .handbox{display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
+@media (prefers-reduced-motion:reduce){#gfd-deck *{animation:none!important;transition:none!important}}
+</style>
+
+<div class="deck-head">
+  <div style="font-weight:500">手势控制 · 花朵绽放 — 项目交付讲解</div>
+  <div class="pageno tabular-nums" id="gfd-pageno">1 / 10</div>
+</div>
+
+<div class="stage">
+
+  <section class="slide" data-title="封面" aria-hidden="true">
+    <h1>手势控制 · 花朵绽放</h1>
+    <p class="lead">项目交付讲解 —— 从摄像头到花朵，一共三层楼</p>
+    <div class="flow">
+      <span class="fnode" style="--d:0s">MediaPipe 手势识别</span>
+      <span class="fnode" style="--d:.3s">Canvas 逐帧渲染</span>
+      <span class="fnode" style="--d:.6s">Web Worker 后台编码</span>
+      <span class="fnode" style="--d:.9s">IndexedDB 本地缓存</span>
+    </div>
+    <p class="sub">用键盘 ← → 或下方按钮翻页。共 10 页。</p>
+    <div class="card gcard">
+      <div class="quote">一句话原理：摄像头看到手掌张合 → 变成一个 0~100% 的数值 → 用这个数值控制花朵画面"显示哪一帧"。<br>握拳 = 花苞，手掌张开 = 完全绽放。</div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="数据流总览" aria-hidden="true">
+    <h2>数据流总览：一条流水线</h2>
+    <p class="sub">整个项目就是这条流水线在每一帧地循环。讲给别人听，讲这一条线就够了。</p>
+    <div class="flow">
+      <span class="fnode" style="--d:0s">摄像头画面</span><span class="farrow">→</span>
+      <span class="fnode" style="--d:.25s">找出手的 21 个关键点</span><span class="farrow">→</span>
+      <span class="fnode" style="--d:.5s">算出张开度 0~1</span><span class="farrow">→</span>
+      <span class="fnode" style="--d:.75s">映射成帧号</span><span class="farrow">→</span>
+      <span class="fnode" style="--d:1s">画布绘制</span>
+    </div>
+    <div class="card gcard">
+      <div><b>张开度</b>：手掌"张合程度"的数值。握拳 ≈ 0.9~1.1，完全张开 ≈ 1.5~1.8（原始值），映射后变成 0~1。</div>
+      <div class="text-small text-muted" style="margin-top:6px">它就是整个项目的"旋钮"，其他一切都是在服务这个旋钮。</div>
+    </div>
+    <p class="sub">重点：这个数值是<b>连续</b>的，所以花是"渐变绽放"，不是开关。</p>
+  </section>
+
+  <section class="slide" data-title="三层架构" aria-hidden="true">
+    <h2>三层架构</h2>
+    <p class="sub">全部跑在一个网页里，没装任何软件、没用任何前端框架（没有 Vue / React）。</p>
+    <div class="layer"><div class="lnum">3</div><div><b>呈现层 — Canvas 逐帧绘制</b><div class="text-small text-muted">花朵 = 362 张图片组成的序列，手势决定显示第几张</div></div></div>
+    <div class="layer"><div class="lnum">2</div><div><b>识别层 — MediaPipe HandLandmarker</b><div class="text-small text-muted">Google 开源模型，浏览器本地运行，每帧输出手的 21 个关键点坐标</div></div></div>
+    <div class="layer"><div class="lnum">1</div><div><b>基础层 — 浏览器原生 API + 本地服务器</b><div class="text-small text-muted">getUserMedia 摄像头 / IndexedDB 缓存 / Web Worker 后台线程 / Python 起本地服务</div></div></div>
+    <div class="card gcard">
+      <div class="text-small">为什么必须有本地服务器？浏览器安全规定：只有 localhost / https 开头的网页才允许调用摄像头。直接双击 HTML 文件打开是不给权限的。</div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="张开度算法" aria-hidden="true">
+    <h2>手势识别：张开度怎么算出来的</h2>
+    <p class="sub">点击按钮切换姿势，看关键点和距离线的变化。</p>
+    <div class="handbox">
+      <div>
+        <div class="viz-controls">
+          <button class="btn btn-sm" type="button" data-pose="fist" aria-pressed="false">握拳</button>
+          <button class="btn btn-sm" type="button" data-pose="open" aria-pressed="true">张开</button>
+        </div>
+        <svg id="gfd-hand" viewBox="0 0 100 110" width="240" height="264" role="img" aria-label="手部关键点示意图"></svg>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div class="card gcard">
+          <div><b>张开度 =（4 个指尖到手腕的平均距离）÷ 手掌长度</b></div>
+          <div class="text-small text-muted" style="margin-top:6px">4 个指尖 = 食指/中指/无名指/小指的指尖；手掌长度 = 手腕到中指根。</div>
+        </div>
+        <ul>
+          <li>握拳时：指尖离手腕近 → 数值小（约 1.0）</li>
+          <li>张开时：指尖离手腕远 → 数值大（约 1.6）</li>
+          <li><b>用比值而不是像素距离</b>：手离镜头远近会变，相除后自动抵消 —— 这是整个算法里最关键的一步</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="为什么不直接拖视频" aria-hidden="true">
+    <h2>为什么不直接拖动视频播放器？</h2>
+    <p class="sub">mp4 是压缩格式：只有"关键帧"（标 I 的格子）能独立解码，中间的帧必须靠前面的帧推算。点下面任意一帧对比两条路的差别：</p>
+    <div class="text-small text-muted">第一行 · 直接拖视频（点一个帧号，实际只能跳到最近的关键帧）：</div>
+    <div class="krow" id="gfd-row-video"></div>
+    <div class="text-small text-muted">第二行 · 图片序列（我们采用的方案，每张独立、指哪去哪）：</div>
+    <div class="krow" id="gfd-row-image"></div>
+    <div aria-live="polite" class="text-small" id="gfd-kf-note" style="margin-top:8px">↑ 点击任意帧号试试</div>
+    <p class="sub" style="margin-top:10px">所以手势快速拖动原生视频必然一顿一顿；想丝滑，就得把视频拆开。</p>
+  </section>
+
+  <section class="slide" data-title="核心方案：一叠照片加旋钮" aria-hidden="true">
+    <h2>核心方案：把视频变成一叠照片，手势当旋钮</h2>
+    <p class="sub">拖动下面的滑块 = 你的手掌张开度。看花和帧号怎么联动 —— 这就是整个项目的核心机制。</p>
+    <div class="handbox">
+      <svg id="gfd-flower" viewBox="0 0 200 200" width="220" height="220" role="img" aria-label="花朵绽放程度示意图"></svg>
+      <div style="flex:1;min-width:260px">
+        <div class="viz-controls">
+          <span class="form-label" for="gfd-bloom">张开度</span>
+          <input id="gfd-bloom" class="form-range" type="range" min="0" max="100" value="0">
+          <span class="tabular-nums" id="gfd-bloom-v">0%</span>
+        </div>
+        <div class="card gcard">
+          <div>当前显示：第 <b class="tabular-nums" id="gfd-frame">0</b> 帧 / 共 362 帧</div>
+          <div class="text-small text-muted" style="margin-top:6px">每秒取 30 帧。手势每变化一点，就翻到对应的"那一张"——连续、精确、丝滑。</div>
+        </div>
+        <p class="sub">这 362 张图是一次性从你的 mp4 里提取出来的，之后存进浏览器缓存。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="性能与稳定三件套" aria-hidden="true">
+    <h2>让它"又快又稳"的三件套</h2>
+    <div class="layer"><div class="lnum">A</div><div><b>Web Worker 后台编码</b><div class="text-small text-muted">把 362 张图转 JPEG 的重活放到后台线程，主线程只管绘制 —— 页面不卡。</div></div></div>
+    <div class="layer"><div class="lnum">B</div><div><b>IndexedDB 本地缓存</b><div class="text-small text-muted">提取结果（约10MB）存进浏览器数据库，第二次打开秒加载，不用重新提取。</div></div></div>
+    <div class="layer"><div class="lnum">C</div><div><b>缓存内容体检 + 自愈</b><div class="text-small text-muted">每次加载抽 5 帧对比画面差异，"全长一个样"的坏缓存自动扔掉重新提取 —— 专治不同浏览器解码时序不一致。</div></div></div>
+    <div class="card gcard">
+      <div class="text-small">另外两处细节：数值平滑（EMA 指数滑动平均，防手抖导致画面抖动）；只在摄像头出新帧时才跑识别（省一半性能）。</div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="踩坑实录" aria-hidden="true">
+    <h2>踩坑实录（每一坑 = 一个知识点）</h2>
+    <details><summary>坑1 · 在 ZCode 内置浏览器里完全不动</summary><p>内置浏览器拿不到摄像头权限（NotAllowedError）。摄像头 API 有安全限制：必须是 localhost / https 且是受信任的浏览器。→ 教训：先确认环境，再查代码。</p></details>
+    <details><summary>坑2 · 手势正常但花不响应</summary><p>"视频加载完成"事件的监听器挂晚了，事件早就发完了，永远等不到。→ 教训：依赖事件不如直接查状态（readyState）。</p></details>
+    <details><summary>坑3 · 提取出362张一模一样的图</summary><p>seek 跳帧时事件触发了，但新画面还没解码完，抓到的全是旧帧。→ 教训：改成"播放式抓帧"——每帧真正呈现时才抓（rVFC），机制上杜绝。</p></details>
+    <details><summary>坑4 · 提取时页面卡成幻灯片</summary><p>JPEG 编码把主线程堵死，视频播放都被拖慢。→ 教训：重活放 Web Worker。</p></details>
+    <details><summary>坑5 · 进度卡在99%</summary><p>暂停状态下部分回调永不触发。→ 教训：所有异步等待必须有超时兜底，永远不能裸等一个事件。</p></details>
+    <details><summary>坑6 · 花只动一点点像没动</summary><p>手进出画面的误检数据把校准范围撑爆（0.37~3.89），正常动作只映射到 18%~35%。→ 教训：统计分位数 + 离群值拒绝，校准自愈。</p></details>
+    <details><summary>坑7 · 换台电脑又不响应</summary><p>那台电脑缓存里存了坏帧。→ 教训：缓存加载时做内容体检，坏缓存自动重提取（自愈）。</p></details>
+    <p class="sub" style="margin-top:10px">给人讲的时候可以总结成一句：技术原理不难，难的是浏览器环境的时序与不可控 —— 所以最后做了自检报告 + 自愈机制。</p>
+  </section>
+
+  <section class="slide" data-title="知识清单" aria-hidden="true">
+    <h2>你需要具备的知识清单</h2>
+    <div class="cols">
+      <div>
+        <h3>必懂（讲清项目足够）</h3>
+        <ul>
+          <li>JavaScript 异步：Promise / async-await</li>
+          <li>Canvas 2D：画图、requestAnimationFrame 循环</li>
+          <li>几何小算法：两点距离 + 归一化比值</li>
+          <li>浏览器安全模型：localhost / https 才能开摄像头</li>
+          <li>视频压缩常识：关键帧（I帧）是什么</li>
+        </ul>
+      </div>
+      <div>
+        <h3>进阶（被追问时能答上）</h3>
+        <ul>
+          <li>MediaPipe：浏览器里跑的轻量神经网络（WASM/GPU）</li>
+          <li>Web Worker / OffscreenCanvas：主线程与后台分工</li>
+          <li>IndexedDB：浏览器里的本地数据库</li>
+          <li>EMA 指数滑动平均：平滑系数的权衡</li>
+          <li>rVFC：逐帧呈现回调（抓帧的正确姿势）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-title="总结" aria-hidden="true">
+    <h2>一句话总结（收尾用）</h2>
+    <div class="card gcard">
+      <div class="quote">"整个项目 = 一个网页 + 一个手势识别模型 + 一叠图片。摄像头喂画面给识别模型，模型吐出一个 0 到 1 的张开度，我用它当进度条旋钮，去翻那一叠图片。所有难度都在'让它在任何浏览器里都稳定'这件事上。"</div>
+    </div>
+    <h3>现场演示建议</h3>
+    <ul>
+      <li>先演示<b>红芍药版</b>（原始素材）→ 再切<b>蓝玫瑰版</b>（AI 生成素材）→ 最后<b>代码花版</b>（纯手绘）</li>
+      <li>演示顺序体现对比：真实素材 / AI 素材 / 纯代码渲染三种路线</li>
+      <li>被问"和抖音那个什么区别"：原理相同（手势控制视频进度），区别在我们把视频拆成了帧序列 + 加了自愈机制，不依赖特定环境</li>
+    </ul>
+    <p class="sub" style="margin-top:10px">后续有任何问题，随时在对话里提出来。</p>
+  </section>
+
+</div>
+
+<div class="deck-foot">
+  <button class="btn btn-sm prev" type="button">← 上一页</button>
+  <div class="dots" role="group" aria-label="页面导航"></div>
+  <button class="btn btn-sm next" type="button">下一页 →</button>
+</div>
+
+<script>
+(function(){
+  var root=document.getElementById("gfd-deck");
+  var slides=root.querySelectorAll(".slide");
+  var dotsBox=root.querySelector(".dots");
+  var cur=0;
+  var clamp=function(v,a,b){return Math.min(b,Math.max(a,v));};
+  var lerp=function(a,b,t){return a+(b-a)*t;};
+
+  var saved=(window.zcode&&window.zcode.widgetState&&window.zcode.widgetState.privateContent)||null;
+  if(saved&&typeof saved.slide==="number") cur=clamp(saved.slide,0,slides.length-1);
+
+  function show(n){
+    cur=(n+slides.length)%slides.length;
+    slides.forEach(function(s,i){
+      s.classList.toggle("active",i===cur);
+      s.setAttribute("aria-hidden",i===cur?"false":"true");
+    });
+    dotsBox.querySelectorAll("button").forEach(function(d,i){
+      d.classList.toggle("on",i===cur);
+      d.setAttribute("aria-pressed",i===cur?"true":"false");
+    });
+    document.getElementById("gfd-pageno").textContent=(cur+1)+" / "+slides.length;
+  }
+  function save(){
+    if(window.zcode&&window.zcode.setWidgetState){
+      window.zcode.setWidgetState({privateContent:{slide:cur}}).catch(function(){});
+    }
+  }
+  slides.forEach(function(s,i){
+    var b=document.createElement("button");
+    b.type="button";b.className="dot";
+    b.setAttribute("aria-label","第"+(i+1)+"页："+s.getAttribute("data-title"));
+    b.addEventListener("click",function(){show(i);save();});
+    dotsBox.appendChild(b);
+  });
+  root.querySelector(".prev").addEventListener("click",function(){show(cur-1);save();});
+  root.querySelector(".next").addEventListener("click",function(){show(cur+1);save();});
+  document.addEventListener("keydown",function(e){
+    if(e.key==="ArrowRight"){show(cur+1);save();e.preventDefault();}
+    else if(e.key==="ArrowLeft"){show(cur-1);save();e.preventDefault();}
+  });
+  show(cur);
+
+  /* ---- 手部关键点示意图（两套姿势，按钮切换） ---- */
+  var OPEN=[[50,95],[38,82],[30,72],[24,62],[18,54],[40,60],[36,45],[34,34],[33,24],[50,58],[50,42],[50,30],[50,20],[59,60],[62,45],[64,34],[65,25],[68,66],[73,54],[76,45],[78,38]];
+  var FIST=[[50,95],[40,84],[34,76],[32,68],[36,62],[41,62],[41,50],[43,42],[45,38],[50,60],[50,48],[51,41],[52,37],[59,62],[60,50],[60,43],[59,39],[67,65],[69,55],[69,48],[68,44]];
+  var CONN=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+  var TIPS=[8,12,16,20];
+  var handSvg=document.getElementById("gfd-hand");
+  var NS="http://www.w3.org/2000/svg";
+  function buildPose(pts,opacity){
+    var g=document.createElementNS(NS,"g");
+    g.setAttribute("opacity",opacity);
+    g.style.transition="opacity .25s ease";
+    CONN.forEach(function(c){
+      var l=document.createElementNS(NS,"line");
+      l.setAttribute("x1",pts[c[0]][0]);l.setAttribute("y1",pts[c[0]][1]);
+      l.setAttribute("x2",pts[c[1]][0]);l.setAttribute("y2",pts[c[1]][1]);
+      l.setAttribute("stroke","var(--foreground)");l.setAttribute("stroke-width","1.4");l.setAttribute("opacity","0.75");
+      g.appendChild(l);
+    });
+    [0,9].forEach(function(i){
+      var l=document.createElementNS(NS,"line");
+      l.setAttribute("x1",pts[0][0]);l.setAttribute("y1",pts[0][1]);
+      l.setAttribute("x2",pts[i][0]);l.setAttribute("y2",pts[i][1]);
+      l.setAttribute("stroke","var(--viz-series-1)");l.setAttribute("stroke-width","1");
+      l.setAttribute("stroke-dasharray","2 2");l.setAttribute("opacity","0.9");
+      g.appendChild(l);
+    });
+    pts.forEach(function(p,i){
+      var c=document.createElementNS(NS,"circle");
+      c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);c.setAttribute("r",i===0?"2.6":"1.9");
+      c.setAttribute("fill",i===0?"var(--viz-series-2)":(TIPS.indexOf(i)>=0?"var(--viz-series-1)":"var(--foreground)"));
+      g.appendChild(c);
+    });
+    return g;
+  }
+  var gOpen=buildPose(OPEN,1), gFist=buildPose(FIST,0);
+  handSvg.appendChild(gOpen);handSvg.appendChild(gFist);
+  var poseBtns=root.querySelectorAll("[data-pose]");
+  poseBtns.forEach(function(b){
+    b.addEventListener("click",function(){
+      var open=b.getAttribute("data-pose")==="open";
+      gOpen.setAttribute("opacity",open?1:0);
+      gFist.setAttribute("opacity",open?0:1);
+      poseBtns.forEach(function(x){x.setAttribute("aria-pressed",x===b?"true":"false");});
+    });
+  });
+
+  /* ---- 关键帧交互演示 ---- */
+  var KF=[0,4,8], TOTAL=12;
+  var rowV=document.getElementById("gfd-row-video");
+  var rowI=document.getElementById("gfd-row-image");
+  var note=document.getElementById("gfd-kf-note");
+  var cellsV=[],cellsI=[];
+  function buildRow(box,arr,isVideo){
+    for(var i=0;i<TOTAL;i++){
+      (function(i){
+        var b=document.createElement("button");
+        b.type="button";b.className="cell"+(isVideo&&KF.indexOf(i)>=0?" kf":"");
+        b.textContent=i;
+        b.setAttribute("aria-label",(isVideo?"视频":"图片序列")+"第"+i+"帧");
+        b.addEventListener("click",function(){pick(i);});
+        box.appendChild(b);arr.push(b);
+      })(i);
+    }
+  }
+  function clearHit(arr){arr.forEach(function(b){b.classList.remove("hit-bad","hit-good","cur");});}
+  function pick(i){
+    clearHit(cellsV);clearHit(cellsI);
+    var shown=KF[0];KF.forEach(function(k){if(k<=i)shown=k;});
+    cellsV[shown].classList.add("hit-bad");cellsV[i].classList.add("cur");
+    cellsI[i].classList.add("hit-good");
+    note.innerHTML="视频方案：想要第 <b>"+i+"</b> 帧，实际只能显示关键帧 <b>"+shown+"</b>"+(shown!==i?"（跳了 "+(i-shown)+" 帧，画面跳变）":"")+" ｜ 图片序列方案：精确显示第 <b>"+i+"</b> 帧，指哪去哪。";
+  }
+  buildRow(rowV,cellsV,true);buildRow(rowI,cellsI,false);
+  pick(7);
+
+  /* ---- 花朵绽放滑块演示 ---- */
+  var NS2="http://www.w3.org/2000/svg";
+  var fSvg=document.getElementById("gfd-flower");
+  var glow=document.createElementNS(NS2,"circle");
+  glow.setAttribute("cx",100);glow.setAttribute("cy",100);glow.setAttribute("r",10);
+  glow.setAttribute("fill","var(--viz-series-1)");glow.setAttribute("opacity","0.12");
+  fSvg.appendChild(glow);
+  var petalPath="M0,4 C-13,-16 -15,-46 0,-64 C15,-46 13,-16 0,4 Z";
+  var petalGs=[];
+  for(var k=0;k<8;k++){
+    var g=document.createElementNS(NS2,"g");
+    var p=document.createElementNS(NS2,"path");
+    p.setAttribute("d",petalPath);
+    p.setAttribute("fill",k%2?"#f2a0b5":"#e0567a");
+    p.setAttribute("opacity","0.92");
+    g.appendChild(p);
+    fSvg.appendChild(g);petalGs.push(g);
+  }
+  var stamens=document.createElementNS(NS2,"g");
+  stamens.setAttribute("opacity","0");
+  for(var s=0;s<10;s++){
+    var ang=s/10*Math.PI*2, rr=10+(s%3)*5;
+    var c=document.createElementNS(NS2,"circle");
+    c.setAttribute("cx",100+Math.cos(ang)*rr);c.setAttribute("cy",100+Math.sin(ang)*rr);
+    c.setAttribute("r","3");c.setAttribute("fill","#f5c469");
+    stamens.appendChild(c);
+  }
+  fSvg.appendChild(stamens);
+  var slider=document.getElementById("gfd-bloom");
+  var bloomV=document.getElementById("gfd-bloom-v");
+  var frameNo=document.getElementById("gfd-frame");
+  function setBloom(t){
+    for(var k=0;k<8;k++){
+      var closed=(k-3.5)*10, open=k*45, a=lerp(closed,open,t);
+      var len=0.55+0.45*t;
+      petalGs[k].setAttribute("transform","translate(100,100) rotate("+a.toFixed(1)+") scale("+len.toFixed(2)+")");
+    }
+    glow.setAttribute("r",(10+70*t).toFixed(1));
+    glow.setAttribute("opacity",(0.12+0.18*t).toFixed(2));
+    stamens.setAttribute("opacity",t>0.55?((t-0.55)/0.45).toFixed(2):"0");
+    frameNo.textContent=Math.round(t*361);
+  }
+  slider.addEventListener("input",function(){
+    var raw=slider.value/100, t=raw*raw*(3-2*raw);
+    bloomV.textContent=slider.value+"%";
+    setBloom(t);
+  });
+  setBloom(0);
+})();
+</script>
+</div>

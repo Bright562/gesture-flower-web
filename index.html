@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>手势控制 · 花开</title>
+<style>
+  html,body{margin:0;height:100%;background:#07080a;color:#eee;font-family:"Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  /* 花朵舞台：画布居中铺满 */
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #flower{max-width:100%;max-height:100%;width:auto;height:auto;display:block}
+  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+  /* 顶部标题与提示 */
+  #hud{position:fixed;top:18px;left:0;right:0;text-align:center;pointer-events:none;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+  #hud h1{margin:0;font-size:20px;font-weight:500;letter-spacing:6px;color:#f5e9dc;opacity:.9}
+  #hud .hint{margin:6px 0 0;font-size:13px;color:#c9b8a8;opacity:.75;letter-spacing:2px}
+  /* 右上角模式切换 */
+  #modeBar{position:fixed;top:14px;right:16px;display:flex;gap:8px;z-index:5}
+  #modeBar button{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.22);color:#ddd;padding:5px 13px;border-radius:16px;font-size:12px;cursor:pointer;backdrop-filter:blur(6px);font-family:inherit}
+  #modeBar button.on{border-color:#ff8fa3;color:#ffc9d4}
+  /* 左上角状态条 */
+  #status{position:fixed;top:16px;left:16px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:6px 14px;font-size:12px;color:#ddd;backdrop-filter:blur(6px);max-width:46vw}
+  #status.ok{border-color:rgba(120,220,150,.5);color:#bdf0cf}
+  /* 右下角摄像头预览面板 */
+  #camPanel{position:fixed;right:18px;bottom:18px;width:240px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.15);background:#000;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  #camWrap{position:relative;width:100%;aspect-ratio:4/3}
+  #cam,#camCanvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+  #camBar{height:6px;background:rgba(255,255,255,.12)}
+  #camBarFill{height:100%;width:0;background:linear-gradient(90deg,#e5537a,#ffb36b)}
+  #camDebug{font-size:11px;color:#aaa;padding:4px 8px;background:rgba(0,0,0,.6);display:flex;justify-content:space-between}
+  /* 底部绽放进度条 */
+  #bloomPanel{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);width:min(420px,60vw);pointer-events:none}
+  #bloomLabel{font-size:12px;color:#cbb9a9;letter-spacing:3px;text-align:center;margin-bottom:6px;opacity:.85}
+  #bloomBar{height:5px;background:rgba(255,255,255,.14);border-radius:3px;overflow:hidden}
+  #bloomFill{height:100%;width:0;background:linear-gradient(90deg,#7a2c3d,#e5537a,#ffd9a0)}
+  /* 全屏错误提示层 */
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(7,8,10,.93);z-index:10;padding:30px;text-align:center;color:#f0c9c9;line-height:2}
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="flower" width="1280" height="720"></canvas></div>
+  <div id="vignette"></div>
+
+  <div id="hud">
+    <h1>手 势 · 花 开</h1>
+    <p class="hint">握拳 → 花苞闭合 ｜ 张开手掌 → 完全绽放 ｜ 多手入镜自动锁定动的那只（右上角切换；←/→ 手动；双击全屏）</p>
+  </div>
+
+  <div id="modeBar">
+    <button id="btnRed" class="on">视频版·红芍药</button>
+    <button id="btnBlue">蓝玫瑰版</button>
+    <button id="btnCode">代码花版</button>
+    <button id="btnExport" style="display:none">导出绽放视频</button>
+    <button id="btnDiag">复制诊断</button>
+  </div>
+
+  <div id="status">正在初始化…</div>
+
+  <div id="camPanel">
+    <div id="camWrap">
+      <video id="cam" autoplay playsinline muted></video>
+      <canvas id="camCanvas"></canvas>
+    </div>
+    <div id="camBar"><div id="camBarFill"></div></div>
+    <div id="camDebug"><span id="dbgHand">手的状态: —</span><span id="dbgRaw">张开度: —</span></div>
+  <div id="camDebug"><span id="dbgPipe">管线: —</span></div>
+  </div>
+
+  <div id="bloomPanel">
+    <div id="bloomLabel">绽 放 进 度</div>
+    <div id="bloomBar"><div id="bloomFill"></div></div>
+  </div>
+
+  <div id="err"><div id="errMsg"></div></div>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "./assets/wasm/vision_bundle.mjs";
+
+const $ = id => document.getElementById(id);
+const statusEl=$("status"), errEl=$("err"), errMsg=$("errMsg");
+const flower=$("flower"), fctx=flower.getContext("2d");
+const cam=$("cam"), camCanvas=$("camCanvas"), ctx=camCanvas.getContext("2d");
+const camBarFill=$("camBarFill"), bloomFill=$("bloomFill"), dbgHand=$("dbgHand"), dbgRaw=$("dbgRaw");
+const btnRed=$("btnRed"), btnBlue=$("btnBlue"), btnCode=$("btnCode"), btnExport=$("btnExport"), btnDiag=$("btnDiag");
+const dbgPipe=$("dbgPipe");
+
+function fail(html){ errMsg.innerHTML=html; errEl.style.display="flex"; }
+
+/* 状态条：模型/摄像头状态 + 任意一条视频的提取进度 合并显示 */
+let baseStatus="正在初始化…", extractingLabel=null, extractPct=0;
+function paintStatus(){ statusEl.textContent = baseStatus + (extractingLabel ? " ｜「"+extractingLabel+"」逐帧提取 "+Math.round(extractPct*100)+"%（首次较慢，之后秒开）" : ""); }
+function dbg(o){ try{ window.__dbg=Object.assign({},window.__dbg||{},o,{t:Date.now()%100000}); }catch(e){} }
+/* 全局错误捕获：所有未处理异常都记入 window.__errs，供诊断报告读取 */
+window.__errs=[];
+window.addEventListener("unhandledrejection", e=>{ try{ window.__errs.push("rej: "+((e.reason&&e.reason.message)||e.reason)); }catch(_){} });
+window.addEventListener("error", e=>{ try{ window.__errs.push("err: "+e.message); }catch(_){} });
+function setStatus(t, ok=false){ baseStatus=t; statusEl.classList.toggle("ok",ok); paintStatus(); }
+
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const smoothstep=x=>x*x*(3-2*x);
+function jr(s){ const x=Math.sin(s)*43758.5453; return x-Math.floor(x); }
+
+(async function main(){
+try{
+  /* =========================================================
+     1. 视频逐帧系统：支持多个视频素材，各自独立提取与缓存
+     ========================================================= */
+  const FRAME_FPS=30;
+
+  function makeVideoSource(src, cacheKey, label){
+    return { src, cacheKey, label,
+      frames:null, frameCount:0, duration:0, w:1280, h:720,
+      ready:false, loading:false, lastDrawn:-1 };
+  }
+  const srcRed  = makeVideoSource("assets/flower.mp4",   "frames_v2_red",  "视频版·红芍药");
+  const srcBlue = makeVideoSource("assets/blue_rose.mp4","frames_v2_blue", "蓝玫瑰版");
+  let activeVideo = srcRed;
+
+  function idbOpen(){
+    return new Promise((res,rej)=>{
+      const rq=indexedDB.open("flowerFrames",1);
+      rq.onupgradeneeded=()=>rq.result.createObjectStore("cache");
+      rq.onsuccess=()=>res(rq.result);
+      rq.onerror=()=>rej(rq.error);
+    });
+  }
+  async function idbGet(key){
+    const db=await idbOpen();
+    return new Promise((res,rej)=>{
+      const rq=db.transaction("cache","readonly").objectStore("cache").get(key);
+      rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+    });
+  }
+  async function idbPut(key,val){
+    const db=await idbOpen();
+    return new Promise((res,rej)=>{
+      const rq=db.transaction("cache","readwrite").objectStore("cache").put(val,key);
+      rq.onsuccess=()=>res(); rq.onerror=()=>rej(rq.error);
+    });
+  }
+  function nextFrame(v){
+    return new Promise(res=>{
+      if(v.requestVideoFrameCallback){ v.requestVideoFrameCallback(()=>res()); }
+      else{ requestAnimationFrame(()=>requestAnimationFrame(res)); }
+    });
+  }
+  async function seekTo(v,t){
+    if(Math.abs(v.currentTime-t)<0.001){ return; }
+    await new Promise(res=>{
+      let done=false;
+      const fin=()=>{ if(!done){ done=true; v.removeEventListener("seeked",h); res(); } };
+      const h=()=>fin();
+      v.addEventListener("seeked",h);
+      v.currentTime=t;
+      setTimeout(fin, 2000);   // 兜底：万一 seeked 事件不触发
+    });
+    // seeked 后等一小段时间确保新帧已解码（部分环境 rVFC 在暂停+分离元素下不触发，用超时兜底）
+    await Promise.race([nextFrame(v), new Promise(r=>setTimeout(r,150))]);
+  }
+  /* JPEG 编码 Worker：把繁重的编码挪出主线程，避免拖慢视频播放 */
+  let encWorker=null, encSeq=0; const encWaiting=new Map();
+  try{
+    const code=`self.onmessage=async(e)=>{
+      const {seq,bmp,quality,w,h}=e.data;
+      const off=new OffscreenCanvas(w,h);
+      off.getContext("2d").drawImage(bmp,0,0,w,h);
+      bmp.close();
+      const blob=await off.convertToBlob({type:"image/jpeg",quality:quality});
+      self.postMessage({seq,blob},[blob]);
+    };`;
+    encWorker=new Worker(URL.createObjectURL(new Blob([code],{type:"text/javascript"})));
+    encWorker.onmessage=e=>{
+      const {seq,blob}=e.data;
+      const w2=encWaiting.get(seq);
+      if(w2){ encWaiting.delete(seq); w2(blob); }
+    };
+  }catch(e){ encWorker=null; }
+
+  const encCanvas=document.createElement("canvas");
+  async function encodeFrame(bmp, idx, w, h, blobs){
+    if(encWorker){
+      const blob=await new Promise(res=>{
+        const seq=++encSeq;
+        encWaiting.set(seq, res);
+        encWorker.postMessage({seq, bmp, quality:0.85, w, h}, [bmp]);
+      });
+      if(blob) blobs[idx]=blob;
+    }else{
+      encCanvas.width=w; encCanvas.height=h;
+      const cx2=encCanvas.getContext("2d");
+      cx2.drawImage(bmp,0,0,w,h);
+      bmp.close();
+      const b=await new Promise(res=>encCanvas.toBlob(x=>res(x),"image/jpeg",0.85));
+      if(b) blobs[idx]=b;
+    }
+  }
+
+  async function extractFramesFromVideo(src, label){
+    const v=document.createElement("video");
+    v.src=src; v.muted=true; v.playsInline=true; v.preload="auto";
+    await new Promise((res,rej)=>{ v.onloadedmetadata=res; v.onerror=()=>rej(new Error("视频文件加载失败")); });
+    const dur=v.duration, w=v.videoWidth, h=v.videoHeight;
+    if(!dur || !w) throw new Error("视频元数据异常");
+    dbg({phase:"meta", dur:dur, count:Math.ceil(dur*FRAME_FPS)});
+    const count=Math.max(1,Math.ceil(dur*FRAME_FPS));
+    const blobs=new Array(count).fill(null);
+    const pending=new Array(count).fill(false);
+    extractingLabel=label; extractPct=0; paintStatus();
+
+    async function captureAt(mediaTime){
+      const idx=Math.round(mediaTime*FRAME_FPS);
+      if(idx<0 || idx>=count || blobs[idx] || pending[idx]) return;
+      pending[idx]=true;
+      try{
+        const bmp=await createImageBitmap(v);   // 抓住当前呈现的这一帧（开销极小）
+        await encodeFrame(bmp, idx, w, h, blobs);
+      }catch(e){ /* 单帧失败，靠补漏 */ }
+      pending[idx]=false;
+    }
+    let stop=false;
+    if(typeof v.requestVideoFrameCallback==="function"){
+      const cb=(now,meta)=>{
+        if(stop) return;
+        captureAt(meta.mediaTime);
+        extractPct=Math.min(0.99, meta.mediaTime/dur); paintStatus();
+        v.requestVideoFrameCallback(cb);
+      };
+      v.requestVideoFrameCallback(cb);
+    }else{
+      const tick=()=>{
+        if(stop) return;
+        captureAt(v.currentTime);
+        extractPct=Math.min(0.99, v.currentTime/dur); paintStatus();
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+    // 全速播放一遍视频，边播边在后台线程编码
+    dbg({phase:"playing"});
+    try{ await v.play(); }catch(e){ dbg({phase:"playerror", msg:e.message}); }
+    await new Promise(res=>{
+      let over=false;
+      const done=()=>{ if(!over){ over=true; clearInterval(iv); v.removeEventListener("ended",onEnd); res(); } };
+      const onEnd=()=>done();
+      v.addEventListener("ended",onEnd);
+      const iv=setInterval(()=>{ dbg({phase:"playing", ct:Math.round(v.currentTime*10)/10}); if(v.ended || (dur - v.currentTime)<0.08) done(); }, 200);   // ended 事件可能不触发，轮询兜底
+      setTimeout(()=>done(), dur*1000+5000);
+    });
+    dbg({phase:"playwait-done", ct:v.currentTime, ended:v.ended});
+    stop=true; v.pause();
+    // 补漏：播放中没抓到的槽位，seek 后用最传统的 drawImage 直抓（单帧最多1.5秒，绝不卡死）
+    let missingCount=0;
+    for(let i=0;i<count;i++){
+      if(blobs[i]||pending[i]) continue;
+      missingCount++;
+      dbg({phase:"gapfill", i:i});
+      try{
+        await Promise.race([
+          (async()=>{
+            await seekTo(v, Math.min(dur-0.001, i/FRAME_FPS));
+            await new Promise(res=>setTimeout(res,150));   // 解码稳定窗口，防抓到上一帧
+            encCanvas.width=w; encCanvas.height=h;
+            const cx2=encCanvas.getContext("2d");
+            cx2.drawImage(v,0,0,w,h);
+            const b=await new Promise(res=>encCanvas.toBlob(x=>res(x),"image/jpeg",0.85));
+            if(b) blobs[i]=b;
+          })(),
+          new Promise(res=>setTimeout(res,1500))
+        ]);
+      }catch(e){ dbg({phase:"gapfill-err", i:i, msg:e.message}); }
+      extractPct=i/count; paintStatus();
+    }
+    dbg({phase:"gapfill-done", missingCount:missingCount});
+    // 最终兜底：空槽复制相邻有效帧
+    for(let i=1;i<count;i++){ if(!blobs[i]) blobs[i]=blobs[i-1]; }
+    for(let i=count-2;i>=0;i--){ if(!blobs[i]) blobs[i]=blobs[i+1]; }
+    extractingLabel=null; paintStatus();
+    dbg({phase:"done"});
+    return { fps:FRAME_FPS, duration:dur, w, h, count, blobs };
+  }
+  /* 缓存内容体检：抽5帧算亮度差异。"全长一个样"=坏缓存（正是用户遇到的：全是花苞帧） */
+  async function frameVariety(rec){
+    try{
+      const c2=document.createElement("canvas"); c2.width=160; c2.height=90;
+      const cx2=c2.getContext("2d");
+      async function lumOf(i){
+        const bmp=await createImageBitmap(rec.blobs[i]);
+        cx2.drawImage(bmp,0,0,160,90); bmp.close();
+        const d=cx2.getImageData(0,0,160,90).data;
+        let s=0,n=0; for(let k=0;k<d.length;k+=97){ s+=d[k]+d[k+1]+d[k+2]; n++; }
+        return s/n;
+      }
+      const idxs=[0, Math.floor(rec.count*0.25), Math.floor(rec.count*0.5), Math.floor(rec.count*0.75), rec.count-1];
+      const lums=[];
+      for(const i of idxs){ if(rec.blobs[i]) lums.push(await lumOf(i)); }
+      if(lums.length<3) return false;
+      const spread=Math.max.apply(null,lums)-Math.min.apply(null,lums);
+      dbg({phase:"variety", spread:Math.round(spread)});
+      return spread>=12;   // 至少要有明显的内容变化才算有效帧库
+    }catch(e){ return false; }
+  }
+
+  /* 慢速兜底提取：逐帧 seek（每帧多等120ms让解码稳定），播放式提取内容异常时使用 */
+  async function extractFramesBySeek(src, label){
+    const v=document.createElement("video");
+    v.src=src; v.muted=true; v.playsInline=true; v.preload="auto";
+    await new Promise((res,rej)=>{ v.onloadedmetadata=res; v.onerror=()=>rej(new Error("视频文件加载失败")); });
+    const dur=v.duration, w=v.videoWidth, h=v.videoHeight;
+    if(!dur || !w) throw new Error("视频元数据异常");
+    const count=Math.max(1,Math.ceil(dur*FRAME_FPS));
+    const c=document.createElement("canvas"); c.width=w; c.height=h;
+    const cx=c.getContext("2d");
+    const blobs=new Array(count).fill(null);
+    extractingLabel=label+"·慢速模式"; extractPct=0; paintStatus();
+    for(let i=0;i<count;i++){
+      try{
+        await seekTo(v, Math.min(dur-0.001, i/FRAME_FPS));
+        await new Promise(res=>setTimeout(res,120));   // 给解码留出稳定时间，防止抓到上一帧
+        cx.drawImage(v,0,0,w,h);
+        blobs[i]=await new Promise(res=>c.toBlob(b=>res(b),"image/jpeg",0.85));
+      }catch(e){ /* 单帧失败由兜底填充 */ }
+      extractPct=(i+1)/count; paintStatus();
+    }
+    for(let i=1;i<count;i++){ if(!blobs[i]) blobs[i]=blobs[i-1]; }
+    for(let i=count-2;i>=0;i--){ if(!blobs[i]) blobs[i]=blobs[i+1]; }
+    extractingLabel=null; paintStatus();
+    return { fps:FRAME_FPS, duration:dur, w, h, count, blobs };
+  }
+
+  async function ensureFrames(S){
+    if(S.ready || S.loading) return;
+    S.loading=true;
+    try{
+      let rec=await idbGet(S.cacheKey);
+      if(rec && rec.blobs && rec.count===rec.blobs.length){
+        // 缓存内容体检：坏缓存（全是同一画面）直接丢弃重提
+        if((S._attempts||0)<2 && !(await frameVariety(rec))){
+          dbg({phase:"cache-bad", key:S.cacheKey});
+          rec=null;
+        }
+      } else rec=null;
+      if(!rec){
+        S._attempts=(S._attempts||0)+1;
+        rec=await extractFramesFromVideo(S.src, S.label);
+        // 新提取的内容也要体检；异常就换慢速seek式再提一次
+        if((S._attempts||0)<2 && !(await frameVariety(rec))){
+          dbg({phase:"reextract-seek", key:S.cacheKey});
+          rec=await extractFramesBySeek(S.src, S.label);
+        }
+        try{ await idbPut(S.cacheKey,rec); }catch(e){ /* 缓存写入失败不影响使用 */ }
+      }
+      S.frames=rec.blobs; S.frameCount=rec.count; S.duration=rec.duration; S.w=rec.w; S.h=rec.h;
+      S.ready=true; S.lastDrawn=-1;
+      if(activeVideo===S){
+        flower.width=S.w; flower.height=S.h;
+        // 提取完成提示：在画布上闪现2秒，提示用户可以开始了
+        fctx.fillStyle="#07080a"; fctx.fillRect(0,0,S.w,S.h);
+        fctx.textAlign="center";
+        fctx.fillStyle="#bdf0cf"; fctx.font="36px 'Microsoft YaHei', sans-serif";
+        fctx.fillText("✓ 提取完成", S.w/2, S.h/2-14);
+        fctx.fillStyle="#e8d9c8"; fctx.font="20px 'Microsoft YaHei', sans-serif";
+        fctx.fillText("现在张开手掌试试", S.w/2, S.h/2+36);
+        readyFlashUntil=performance.now()+2000;
+      }
+    }catch(e){
+      dbg({phase:"extract-error", msg:(e&&e.message)?e.message:String(e)});
+      fail("❌「"+S.label+"」视频逐帧提取失败："+(e&&e.message?e.message:e)+"<br><span style='font-size:12px;color:#999'>刷新页面可重试。</span>");
+    }
+    S.loading=false;
+  }
+  async function drawFrameOf(S, idx){
+    if(!S.frames) return;
+    idx=clamp(idx,0,S.frameCount-1);
+    if(idx===S.lastDrawn) return;
+    // 同一帧已在解码中：直接等它完成，不要重复发起（避免互相取消导致永远画不出来）
+    if(S._inflight && S._inflight.idx===idx){ await S._inflight.promise; return; }
+    S.drawSeq=(S.drawSeq||0)+1;
+    const seq=S.drawSeq;
+    const promise=(async()=>{
+      let bmp=null;
+      try{ bmp=await createImageBitmap(S.frames[idx]); }
+      catch(e1){
+        // 解码失败的兜底：换 <img> 传统通道再试一次；仍失败则跳过这一帧（用相邻帧），绝不冻结画面
+        try{
+          const url=URL.createObjectURL(S.frames[idx]);
+          const img=new Image();
+          await new Promise((res,rj)=>{ img.onload=res; img.onerror=rj; img.src=url; });
+          bmp=await createImageBitmap(img);
+          URL.revokeObjectURL(url);
+        }catch(e2){
+          S._decodeFail=(S._decodeFail||0)+1;
+          dbg({phase:"decode-fail", src:S.label, idx:idx});
+          return;
+        }
+      }
+      if(seq!==S.drawSeq){ bmp.close(); return; }   // 期间又请求了更新的帧，丢弃这次
+      if(idx!==S.lastDrawn){
+        fctx.drawImage(bmp,0,0,S.w,S.h);
+        S.lastDrawn=idx;
+      }
+      bmp.close();
+    })();
+    S._inflight={idx,promise};
+    try{ await promise; } finally {
+      if(S._inflight && S._inflight.promise===promise) S._inflight=null;
+    }
+  }
+  // 启动时把两个视频的帧库都准备好（有缓存就秒完成），避免"点到蓝玫瑰才开始准备"的各种边角问题
+  ensureFrames(srcRed).then(()=>ensureFrames(srcBlue));
+
+  /* =========================================================
+     2. 代码花版：纯代码绘制的绽放花朵（无镜头推近、无缩放）
+     ========================================================= */
+  function drawCodeFlower(p, timeMs){
+    const w=flower.width, h=flower.height;
+    fctx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2+12;
+    const R=Math.min(w,h)*0.30;
+    const glow=fctx.createRadialGradient(cx,cy,R*0.1,cx,cy,R*1.9);
+    glow.addColorStop(0,"rgba(255,110,80,"+(0.30*p)+")");
+    glow.addColorStop(0.5,"rgba(200,40,70,"+(0.12*p)+")");
+    glow.addColorStop(1,"rgba(0,0,0,0)");
+    fctx.fillStyle=glow; fctx.fillRect(0,0,w,h);
+    const sway=Math.sin(timeMs/1500)*0.02;
+    const ringsDef=[
+      {n:9, len:1.00, wid:0.34, base:"#7d1a30", tip:"#e8607c", delay:0.00},
+      {n:8, len:0.78, wid:0.30, base:"#93203a", tip:"#f07f95", delay:0.10},
+      {n:7, len:0.56, wid:0.26, base:"#ab2a48", tip:"#ffa3b4", delay:0.22},
+      {n:6, len:0.36, wid:0.22, base:"#c33a58", tip:"#ffc4cf", delay:0.36},
+    ];
+    let seedI=0;
+    ringsDef.forEach((rg, rIdx)=>{
+      const e=smoothstep(clamp((p-rg.delay)/(1-rg.delay),0,1));
+      for(let k=0;k<rg.n;k++){
+        seedI++;
+        const j1=jr(seedI*3.7), j2=jr(seedI*7.3+11), j3=jr(seedI*5.1+29);
+        const closed=(k-(rg.n-1)/2)*0.11 + (j1-0.5)*0.10;
+        const open =(k/rg.n)*Math.PI*2 + rIdx*0.35 + (j2-0.5)*0.10;
+        const ang=closed+(open-closed)*e + sway + (j3-0.5)*0.02*Math.sin(timeMs/900+seedI);
+        const len=R*rg.len*(0.55+0.45*e)*(0.92+0.16*j1);
+        const wid=R*rg.wid*(0.55+0.45*e)*(0.9+0.2*j2);
+        fctx.save();
+        fctx.translate(cx,cy);
+        fctx.rotate(ang);
+        const g=fctx.createLinearGradient(0,0,0,-len);
+        g.addColorStop(0,rg.base);
+        g.addColorStop(0.72,rg.tip);
+        g.addColorStop(1,"rgba(255,220,225,0.9)");
+        fctx.fillStyle=g;
+        fctx.beginPath();
+        fctx.moveTo(0,0);
+        fctx.bezierCurveTo(-wid*0.55,-len*0.28, -wid*0.60,-len*0.68, -wid*0.10,-len*0.98);
+        fctx.bezierCurveTo(-wid*0.02,-len*1.03, wid*0.06,-len*1.00, wid*0.12,-len*0.96);
+        fctx.bezierCurveTo(wid*0.62,-len*0.66, wid*0.55,-len*0.26, 0,0);
+        fctx.closePath();
+        fctx.fill();
+        fctx.strokeStyle="rgba(255,255,255,0.10)";
+        fctx.lineWidth=Math.max(1,wid*0.05);
+        fctx.beginPath();
+        fctx.moveTo(0,-len*0.15);
+        fctx.quadraticCurveTo(wid*0.06,-len*0.55, 0,-len*0.92);
+        fctx.stroke();
+        fctx.restore();
+      }
+    });
+    const eS=smoothstep(clamp((p-0.45)/0.55,0,1));
+    if(eS>0){
+      fctx.save(); fctx.translate(cx,cy);
+      for(let i=0;i<26;i++){
+        const a=(i/26)*Math.PI*2 + jr(i*9.1)*0.5;
+        const rr=R*(0.05+0.13*eS)*(0.6+0.8*jr(i*3.3));
+        const x=Math.cos(a)*rr, y=Math.sin(a)*rr*0.92;
+        fctx.fillStyle="rgba(255,214,120,"+(0.85*eS)+")";
+        fctx.beginPath();
+        fctx.arc(x,y,Math.max(1.5,R*0.016),0,Math.PI*2);
+        fctx.fill();
+      }
+      fctx.fillStyle="rgba(255,240,200,"+(0.5*eS)+")";
+      fctx.beginPath();
+      fctx.arc(0,0,R*0.045*eS,0,Math.PI*2);
+      fctx.fill();
+      fctx.restore();
+    }
+  }
+
+  /* =========================================================
+     3. 模式切换（两个视频版 + 代码花版）
+     ========================================================= */
+  let mode="video", exporting=false;
+  let progressTime=0, manualHoldUntil=0, readyFlashUntil=0, loopBeats=0, loopErrShown=false;
+
+  function setModeButtons(activeBtn){
+    [btnRed,btnBlue,btnCode].forEach(b=>b.classList.remove("on"));
+    activeBtn.classList.add("on");
+    btnExport.style.display = (activeBtn===btnCode) ? "" : "none";
+  }
+  function switchVideo(S, btn){
+    if(activeVideo!==S){
+      activeVideo=S;
+      progressTime=0; S.lastDrawn=-1;
+      if(S.ready){ flower.width=S.w; flower.height=S.h; }
+      ensureFrames(S);          // 蓝玫瑰版第一次切换时会开始提取
+    }
+    mode="video";
+    setModeButtons(btn);
+  }
+  btnRed.addEventListener("click",()=>switchVideo(srcRed,btnRed));
+  btnBlue.addEventListener("click",()=>switchVideo(srcBlue,btnBlue));
+  btnCode.addEventListener("click",()=>{
+    mode="code";
+    setModeButtons(btnCode);
+  });
+
+  /* 导出绽放视频：浏览器原生录制画布 → 下载 .webm 文件 */
+  btnExport.addEventListener("click",async ()=>{
+    if(exporting || mode!=="code") return;
+    exporting=true;
+    try{
+      const stream=flower.captureStream(30);
+      const mime=["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"]
+        .find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+      const rec=new MediaRecorder(stream, mime?{mimeType:mime, videoBitsPerSecond:8000000}:undefined);
+      const chunks=[];
+      rec.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+      const stopped=new Promise(res=>rec.onstop=res);
+      rec.start(100);
+      const D=8000, t0=performance.now();
+      await new Promise(res=>{
+        (function step(){
+          const raw=Math.min(1,(performance.now()-t0)/D);
+          drawCodeFlower(smoothstep(raw), performance.now());
+          btnExport.textContent="录制中… "+Math.round(raw*100)+"%";
+          if(raw<1) requestAnimationFrame(step); else res();
+        })();
+      });
+      rec.stop(); await stopped;
+      const blob=new Blob(chunks,{type:mime||"video/webm"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="代码花绽放.webm";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      btnExport.textContent="已保存到下载文件夹 ✓";
+      setTimeout(()=>btnExport.textContent="导出绽放视频",3000);
+    }catch(e){
+      fail("导出失败："+(e&&e.message?e.message:e));
+    }
+    exporting=false;
+  });
+
+  /* 诊断报告：一键收集整条管线的实时状态 */
+  btnDiag.addEventListener("click", async ()=>{
+    try{
+      const lines=[];
+      lines.push("=== 手势花开 · 诊断报告 ===");
+      lines.push("浏览器: "+navigator.userAgent.slice(0,120));
+      lines.push("摄像头: "+(cam.videoWidth>0 ? ("已开启 "+cam.videoWidth+"x"+cam.videoHeight) : "未开启(0x0)"));
+      lines.push("识别模型: "+(landmarker?"已加载":"未加载"));
+      lines.push("手部: "+dbgHand.textContent+" / "+dbgRaw.textContent);
+      lines.push("帧库: 红芍药="+(srcRed.ready?("就绪·"+srcRed.frameCount+"帧"):(srcRed.loading?"提取中":"未加载"))+" | 蓝玫瑰="+(srcBlue.ready?("就绪·"+srcBlue.frameCount+"帧"):(srcBlue.loading?"提取中":"未加载")));
+      lines.push("坏帧计数: 红芍药="+(srcRed._decodeFail||0)+" | 蓝玫瑰="+(srcBlue._decodeFail||0));
+      lines.push("已画帧号: 红芍药="+srcRed.lastDrawn+" | 蓝玫瑰="+srcBlue.lastDrawn);
+      lines.push("画面亮度采样: "+(function(){ try{ const c2=document.createElement("canvas"); c2.width=32; c2.height=18; const x2=c2.getContext("2d"); x2.drawImage(flower,0,0,32,18); const dd=x2.getImageData(0,0,32,18).data; let s=0,n=0; for(let k=0;k<dd.length;k+=4){ s+=dd[k]+dd[k+1]+dd[k+2]; n++; } return Math.round(s/n); }catch(e){ return "err:"+e.message; } })());
+      lines.push("当前模式: "+(mode==="code"?"代码花版":activeVideo.label));
+      lines.push("平滑值: "+smooth.toFixed(3)+" · 绽放进度: "+progressTime.toFixed(2)+"/"+(activeVideo.duration||0).toFixed(2)+"秒");
+      lines.push("主循环心跳: "+loopBeats+"（数字在变大=循环活着）");
+      lines.push("错误记录: "+(window.__errs.length? window.__errs.slice(-5).join(" ; ") : "(无)"));
+      const text=lines.join("\n");
+      try{ await navigator.clipboard.writeText(text); }catch(e){}
+      fail("<b style='font-size:16px;color:#bdf0cf'>诊断报告已生成（已自动复制，可直接粘贴给我；复制失败就截图本窗口）</b><br><br><span style='font-size:13px;color:#ddd;display:inline-block;text-align:left;white-space:pre-wrap;line-height:1.7'>"+text.replace(/</g,"&lt;")+"</span>");
+    }catch(e){
+      fail("诊断生成失败："+e.message);
+    }
+  });
+
+  /* =========================================================
+     4. 手势计算工具
+     ========================================================= */
+  const HAND_CONNECTIONS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],[0,17]];
+  const TIPS=[8,12,16,20];
+  const d=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+
+  function openness(lm){
+    const palm=Math.max(1e-6, d(lm[0],lm[9]));
+    let s=0; for(const t of TIPS) s+=d(lm[t],lm[0]);
+    return { raw:(s/TIPS.length)/palm };
+  }
+
+  // 自适应校准（抗污染版）：维护最近20秒的有效样本，用 5%~95% 分位数作为有效范围；
+  // 离谱的误检值（<0.6 或 >2.2）在入口就被丢弃，永远不会把范围撑爆
+  const rawHist=[];
+  function calibratedV(raw){
+    rawHist.push(raw);
+    if(rawHist.length>600) rawHist.shift();
+    let lo=1.05, hi=1.55;                        // 样本不足时的默认范围
+    if(rawHist.length>=30){
+      const sorted=[...rawHist].sort(function(a,b){ return a-b; });
+      lo=sorted[Math.floor(sorted.length*0.05)];
+      hi=sorted[Math.min(sorted.length-1, Math.ceil(sorted.length*0.95))];
+    }
+    return { v: clamp((raw-lo)/Math.max(0.25,hi-lo),0,1), lo:lo, hi:hi };
+  }
+
+  function drawHand(lm, highlight){
+    const w=camCanvas.width, h=camCanvas.height;
+    ctx.lineWidth=highlight?2:1.2;
+    ctx.strokeStyle=highlight?"rgba(255,190,120,.95)":"rgba(200,205,215,.35)";
+    ctx.beginPath();
+    for(const [a,b] of HAND_CONNECTIONS){
+      ctx.moveTo(lm[a].x*w, lm[a].y*h);
+      ctx.lineTo(lm[b].x*w, lm[b].y*h);
+    }
+    ctx.stroke();
+    ctx.fillStyle=highlight?"#fff":"rgba(255,255,255,.45)";
+    for(const p of lm){ ctx.beginPath(); ctx.arc(p.x*w,p.y*h,highlight?2.5:1.8,0,Math.PI*2); ctx.fill(); }
+  }
+
+  /* ---------- 多手跟踪：自动锁定"动的那只手" ----------
+     场景：一只手拿手机录屏幕，另一只手做手势。
+     同时跟踪最多 2 只手，每只手记录最近 1.5 秒的张开度历史；
+     谁的动作变化最明显就锁定谁控制花朵；锁定带防抖，不会来回跳。 */
+  let tracks=[], trackSeq=0, controlId=null, challenge=0;
+  const TRACK_TIMEOUT=1000;     // 轨迹1秒没出现才视为暂时消失（跟丢握拳瞬间常见）
+  const CONTROL_GRACE=2000;     // 控制手消失后，保留控制权2秒，期间画面保持不动
+  function stepTracks(now, dets){
+    const used=new Set();
+    for(const tr of tracks){
+      let best=-1, bd=1e9;
+      dets.forEach((dd,i)=>{
+        if(used.has(i)) return;
+        const dist=Math.hypot(dd.cx-tr.cx, dd.cy-tr.cy);
+        if(dist<bd){ bd=dist; best=i; }
+      });
+      if(best>=0 && bd<0.3){
+        const dd=dets[best]; used.add(best);
+        tr.cx=dd.cx; tr.cy=dd.cy; tr.raw=dd.raw; tr.lm=dd.lm; tr.lastSeen=now;
+        tr.hist.push(dd.raw); if(tr.hist.length>45) tr.hist.shift();
+      }
+    }
+    dets.forEach((dd,i)=>{
+      if(!used.has(i)) tracks.push({id:++trackSeq, cx:dd.cx, cy:dd.cy, raw:dd.raw, lm:dd.lm, lastSeen:now, hist:[dd.raw]});
+    });
+    // 控制手的轨迹保留2秒（宽限期），其他手1秒
+    tracks=tracks.filter(t=>now-t.lastSeen < (t.id===controlId?CONTROL_GRACE:TRACK_TIMEOUT));
+  }
+  function movement(tr){
+    if(tr.hist.length<6) return 0;
+    let m=0;
+    for(let i=1;i<tr.hist.length;i++) m+=Math.abs(tr.hist[i]-tr.hist[i-1]);
+    return m/(tr.hist.length-1);
+  }
+  function isMover(tr){
+    // "正在动" = 平均帧间变化明显 且 最近1.5秒有过明显幅度（排除静止的手）
+    if(tr.hist.length<10) return false;
+    let maxV=-9, minV=9;
+    for(const v of tr.hist){ if(v>maxV)maxV=v; if(v<minV)minV=v; }
+    return movement(tr)>0.008 && (maxV-minV)>0.12;
+  }
+  function pickControl(now){
+    const alive=tracks.filter(t=>now-t.lastSeen<TRACK_TIMEOUT);
+    const cur=tracks.find(t=>t.id===controlId);
+    // 1) 控制手仍被检测到：继续用它。但若另一只手动得明显更猛且持续，才切换
+    if(cur && now-cur.lastSeen<TRACK_TIMEOUT){
+      const movers=alive.filter(t=>t.id!==cur.id && isMover(t));
+      if(movers.length){
+        let best=movers[0], bestM=movement(movers[0]);
+        for(const t of movers){ const m=movement(t); if(m>bestM){ best=t; bestM=m; } }
+        if(bestM>movement(cur)*1.6+0.02){
+          challenge++;
+          if(challenge>=15){ challenge=0; controlId=best.id; return best; }
+          return cur;
+        }
+      }
+      challenge=0; return cur;
+    }
+    // 2) 控制手暂时消失（如握拳瞬间跟丢）：宽限期内保持画面不动，等它回来
+    if(cur && now-cur.lastSeen<CONTROL_GRACE){ return {hold:true, tr:cur}; }
+    // 3) 控制手确定离开：控制权只交给"正在动"的手；没有动的手就保持画面
+    const movers=alive.filter(t=>isMover(t));
+    if(movers.length===0) return {hold:true, tr:cur||alive[0]||null};
+    let best=movers[0], bestM=movement(movers[0]);
+    for(const t of movers){ const m=movement(t); if(m>bestM){ best=t; bestM=m; } }
+    if(controlId && best.id!==controlId){
+      challenge++;
+      if(challenge<10) return {hold:true, tr:cur||best};
+    }
+    challenge=0; controlId=best.id; return best;
+  }
+
+  /* =========================================================
+     5. 主循环
+     ========================================================= */
+  let landmarker=null;
+  let smooth=0, lastCamTime=-1;
+
+  // 手动测试：←/→ 键（视频版拖帧，代码花版直接调绽放度）
+  window.addEventListener("keydown",(e)=>{
+    if(e.key!=="ArrowRight" && e.key!=="ArrowLeft") return;
+    const dir=e.key==="ArrowRight" ? 1 : -1;
+    if(mode==="video" && activeVideo.ready){
+      progressTime=clamp(progressTime+dir*0.4, 0, Math.max(0,activeVideo.duration-0.05));
+    }else if(mode==="code"){
+      smooth=clamp(smooth+dir*0.06, 0, 1);
+    }
+    manualHoldUntil=performance.now()+2500;
+    e.preventDefault();
+  });
+
+  document.addEventListener("dblclick", ()=> document.documentElement.requestFullscreen());
+
+  function loop(){
+    try{
+      if(landmarker && cam.readyState>=2){
+        if(cam.currentTime!==lastCamTime){      // 只在摄像头出新帧时才识别，省性能
+          lastCamTime=cam.currentTime;
+          const now=performance.now();
+          const res=landmarker.detectForVideo(cam, now);
+          // 收集本帧所有"有效"的手：手掌够大、张开度在物理合理范围内；范围外的=误检，丢弃
+          const dets=[];
+          let sawAny=false;
+          if(res.landmarks && res.landmarks.length){
+            for(const lm of res.landmarks){
+              sawAny=true;
+              const palm=d(lm[0],lm[9]);
+              const o=openness(lm);
+              if(!o || palm<=0.05 || o.raw<0.6 || o.raw>2.2) continue;
+              let cx2=0, cy2=0;
+              for(const p of lm){ cx2+=p.x; cy2+=p.y; }
+              dets.push({cx:cx2/21, cy:cy2/21, raw:o.raw, lm:lm});
+            }
+          }
+          stepTracks(now, dets);
+          const control=pickControl(now);
+          if(control && control.hold){
+            // 控制手暂时跟丢：保持花朵当前状态不动，等它回来
+            dbgHand.textContent="手的状态: 等待手势手回来（画面保持不动）";
+            ctx.clearRect(0,0,camCanvas.width,camCanvas.height);
+            if(control.tr && control.tr.lm) drawHand(control.tr.lm,false);
+          }else if(control){
+            const m=calibratedV(control.raw);         // 只用被锁定的那只手做校准
+            if(now>manualHoldUntil){
+              smooth += (m.v-smooth)*0.18;
+            }
+            const others=tracks.filter(t=>t.id!==control.id && now-t.lastSeen<1000).length;
+            dbgRaw.textContent="张开度: "+control.raw.toFixed(2)+" (有效范围 "+m.lo.toFixed(2)+"~"+m.hi.toFixed(2)+")";
+            dbgHand.textContent="手的状态: 已识别"+(others>0?"（检测到"+(others+1)+"只手，已锁定动的这只）":"");
+            ctx.clearRect(0,0,camCanvas.width,camCanvas.height);
+            for(const t of tracks){
+              if(now-t.lastSeen<1000) drawHand(t.lm, t.id===control.id);
+            }
+          }else{
+            dbgHand.textContent=sawAny?"手的状态: 检测到干扰，未锁定":"手的状态: 未检测到手";
+            ctx.clearRect(0,0,camCanvas.width,camCanvas.height);
+          }
+        }
+      }
+      if(mode==="video"){
+        const S=activeVideo;
+        if(S.ready && S.duration>0){
+          if(performance.now()>manualHoldUntil){
+            progressTime = smooth*Math.max(0,S.duration-0.05);
+          }
+          if(performance.now()>readyFlashUntil){   // "提取完成"提示闪现期间不覆盖画面
+            drawFrameOf(S, Math.round(progressTime*FRAME_FPS));
+          }
+          bloomFill.style.width=(progressTime/S.duration*100).toFixed(1)+"%";
+        }else if(S.loading){
+          // 提取期间在画面正中显示大字进度，避免看起来像一张死图
+          bloomFill.style.width="0%";
+          fctx.fillStyle="#07080a";
+          fctx.fillRect(0,0,flower.width,flower.height);
+          fctx.textAlign="center";
+          fctx.fillStyle="#e8d9c8";
+          fctx.font="30px 'Microsoft YaHei', sans-serif";
+          fctx.fillText("「"+S.label+"」首次提取中 "+Math.round(extractPct*100)+"%", flower.width/2, flower.height/2-12);
+          fctx.fillStyle="#9a8b7d";
+          fctx.font="18px 'Microsoft YaHei', sans-serif";
+          fctx.fillText("仅第一次需要，之后秒开，请稍候", flower.width/2, flower.height/2+32);
+        }
+      }else{
+        if(!exporting) drawCodeFlower(smooth, performance.now());
+        bloomFill.style.width=(smooth*100).toFixed(1)+"%";
+      }
+      camBarFill.style.width=(smooth*100).toFixed(1)+"%";
+      // 管线状态一行显示：帧库 / 平滑值 / 模式
+      let fs="—";
+      if(mode==="code") fs="代码花版";
+      else{ const SV=activeVideo; fs = SV.ready ? ("就绪·"+SV.frameCount+"帧") : (SV.loading ? "提取中"+Math.round(extractPct*100)+"%" : "未加载"); }
+      dbgPipe.textContent="管线: 帧["+fs+"] 平滑["+smooth.toFixed(2)+"] 模式["+(mode==="code"?"代码花":activeVideo.label)+"]";
+      loopBeats++; window.__loopBeat=loopBeats;
+    }catch(err){
+      // 出错不再让系统停转：显示一次错误，循环继续尝试
+      if(!loopErrShown){
+        loopErrShown=true;
+        dbg({phase:"loop-error", msg:err.message});
+        fail("运行中出错："+err.message+"<br><span style='font-size:12px;color:#999'>请点右上角「复制诊断」把报告发给我。系统会继续尝试运行。</span>");
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  /* =========================================================
+     6. 加载手势识别模型
+     ========================================================= */
+  setStatus("正在加载手势识别模型…");
+  const vision = await FilesetResolver.forVisionTasks("./assets/wasm");
+  const opts = delegate => ({
+    baseOptions:{ modelAssetPath:"./assets/model/hand_landmarker.task", delegate },
+    runningMode:"VIDEO",
+    numHands:2,
+    minHandDetectionConfidence:0.4,
+    minHandPresenceConfidence:0.4,
+    minTrackingConfidence:0.4
+  });
+  try{ landmarker = await HandLandmarker.createFromOptions(vision, opts("GPU")); }
+  catch(e){ landmarker = await HandLandmarker.createFromOptions(vision, opts("CPU")); }
+  setStatus("模型就绪，正在打开摄像头…");
+
+  /* =========================================================
+     7. 打开摄像头
+     ========================================================= */
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:640}, height:{ideal:480}, facingMode:"user" }, audio:false
+    });
+  }catch(e){
+    fail("❌ 无法打开摄像头（"+e.name+"）<br><b style='font-size:18px;color:#ffd9a0'>你现在用的很可能是 ZCode 内置浏览器，它拿不到摄像头权限，手势功能在这里无法使用。</b><br><br>请这样做：<br>1. 打开你电脑<b>自己安装的 Microsoft Edge 或 Chrome</b>（开始菜单里搜索 Edge/Chrome）<br>2. 地址栏输入 <b style='color:#bdf0cf'>localhost:8080</b> 回车<br>3. 弹出摄像头提示点「<b>允许</b>」<br><br><span style='font-size:12px;color:#999'>如果你确实在 Chrome/Edge 里看到此提示：请检查浏览器地址栏左侧的摄像头权限设置，以及是否有其他软件占用摄像头，然后刷新本页。</span>");
+    return;
+  }
+  cam.srcObject = stream;
+  await cam.play();
+  camCanvas.width = cam.videoWidth || 640;
+  camCanvas.height = cam.videoHeight || 480;
+  setStatus("请把手举到镜头前，掌心朝屏幕 ✔", true);
+
+}catch(e){
+  if(errEl.style.display !== "flex"){
+    fail("初始化失败："+(e&&e.message?e.message:e)+"<br><span style='font-size:12px;color:#999'>若反复出现，请把此信息截图发给开发者。</span>");
+  }
+  throw e;
+}
+})();
+</script>
+</body>
+</html>
