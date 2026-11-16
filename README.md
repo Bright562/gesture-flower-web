@@ -59,4 +59,4 @@
 - **代码**：MIT License（见 LICENSE 文件），可自由使用、修改、分发
 - **手部识别模型**（assets/model/hand_landmarker.task）：来自 Google MediaPipe 官方发布
 - **识别引擎**（assets/wasm/）：来自官方 npm 包 `@mediapipe/tasks-vision`
-- **素材视频**：`assets/blue_rose.mp4` 为作者 AI 生成；`assets/flower.mp4` 为演示素材
+- **素材视频**：`assets/flower.mp4` 与 `assets/blue_rose.mp4` 均为作者使用豆包 Seedream（AI 生成）制作
