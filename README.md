@@ -53,3 +53,10 @@
 - Windows / macOS / Linux，浏览器用 Edge 或 Chrome
 - 光线充足，手离摄像头 0.5~1.5 米
 - 多手入镜时程序会自动锁定"动的那只手"，拿东西的手保持静止即可
+
+## 许可证与来源说明
+
+- **代码**：MIT License（见 LICENSE 文件），可自由使用、修改、分发
+- **手部识别模型**（assets/model/hand_landmarker.task）：来自 Google MediaPipe 官方发布
+- **识别引擎**（assets/wasm/）：来自官方 npm 包 `@mediapipe/tasks-vision`
+- **素材视频**：`assets/blue_rose.mp4` 为作者 AI 生成；`assets/flower.mp4` 为演示素材
